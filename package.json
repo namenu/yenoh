@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "license": "MIT",
   "scripts": {
-    "watch": "clj -M:shadow-cljs:ui watch app"
+    "watch": "clj -M:shadow-cljs:ui watch app",
+    "release": "rm -rf public/js && clj -M:shadow-cljs:ui release app",
+    "pages": "npx gh-pages -d public"
   },
   "devDependencies": {},
   "dependencies": {

@@ -102,6 +102,7 @@ into_option: {
     <comma>               := ','
     "
 
+    ;:output-format :enlive
     :string-ci true
     :auto-whitespace :standard))
 
@@ -111,17 +112,42 @@ into_option: {
 ;;; test
 
 
-(require '[honey.sql :as sql])
 
-(defn try-parse-honey [q]
+
+(require '[honey.sql :as sql])
+(require '[meander.epsilon :as m])
+(require '[net.cgrand.enlive-html :as enlive])
+
+(defn honey->ast [q]
   (let [sql (first (sql/format q))]
     (println sql)
     (parse-select sql)))
 
 ;; test select-from
-(let [q {:select [:id :item_id :item :kind :item_kind]
-         :from   [[:categories :c]]}]
-  (try-parse-honey q))
+
+(comment
+  (def ast *1)
+
+  (defn ast->honey [ast]
+    (let [[_ select-list table-expr] ast
+          [_ & columns] select-list
+
+          [_ _ [_ table-name] [_ _ table-alias]] (second table-expr)
+          ]
+      {:select (mapv #(-> % second second keyword) columns)
+       :from   [[(keyword table-name) (keyword table-alias)]]}))
+
+  (defn assert-isomorph [q]
+    (assert q (-> q honey->ast ast->honey)))
+
+  (let [q {:select [:id :item_id :item :kind :item_kind]
+           :from   [[:categories :c]]}]
+    (honey->ast q)
+    (assert-isomorph q))
+
+  (ast->honey ast)
+
+  )
 
 
 ;; test select-from-join-left-join

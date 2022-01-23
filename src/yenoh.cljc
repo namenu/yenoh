@@ -1,5 +1,8 @@
 (ns yenoh
-  (:require [instaparse.core :as insta]))
+  (:require [honey.sql :as sql]
+            #?(:clj  [instaparse.core :as insta :refer [defparser]]
+               :cljs [instaparse.core :as insta :refer-macros [defparser]])
+            #?(:cljs [cljs.reader :refer [read-string]])))
 
 
 "" "
@@ -87,7 +90,7 @@ into_option: {
     (* 개미지옥이다... *)
     value_expr           := numeric_value_expr  | string_value_expr
 
-      <numeric_value_expr>    := #'\\d+'
+      <numeric_value_expr>    := #\"\\d+\"
       <string_value_expr>     := character_value_expr
 
       <character_value_expr>  := value_expr_primary
@@ -97,7 +100,7 @@ into_option: {
 
     <qualifier>           := table_name
     (* regular identifier *)
-    <identifier>          := #'[a-zA-Z_]+'
+    <identifier>          := #\"[a-zA-Z_]+\"
 
     <comma>               := ','
     "
@@ -107,51 +110,58 @@ into_option: {
     :auto-whitespace :standard))
 
 
+(defn ast->honey [ast]
+  (let [[_ select-list table-expr] ast
+        [_ & columns] select-list
+
+        [_ _ [_ table-name] [_ _ table-alias]] (second table-expr)
+        ]
+    {:select (mapv #(-> % second second keyword) columns)
+     :from   [[(keyword table-name) (keyword table-alias)]]}))
+
+(defn honey->sql [honey]
+  (let [honey (read-string honey)
+        sql   (sql/format honey {:pretty true})]
+    (-> sql first clojure.string/trim)))
 
 
 ;;; test
 
 
 
-
-(require '[honey.sql :as sql])
-(require '[meander.epsilon :as m])
-(require '[net.cgrand.enlive-html :as enlive])
-
-(defn honey->ast [q]
-  (let [sql (first (sql/format q))]
-    (println sql)
-    (parse-select sql)))
-
-;; test select-from
-
 (comment
-  (def ast *1)
+  (require '[honey.sql :as sql])
+  (require '[meander.epsilon :as m])
+  (require '[net.cgrand.enlive-html :as enlive])
 
-  (defn ast->honey [ast]
-    (let [[_ select-list table-expr] ast
-          [_ & columns] select-list
+  (defn honey->ast [q]
+    (let [sql (first (sql/format q))]
+      (println sql)
+      (parse-select sql)))
 
-          [_ _ [_ table-name] [_ _ table-alias]] (second table-expr)
-          ]
-      {:select (mapv #(-> % second second keyword) columns)
-       :from   [[(keyword table-name) (keyword table-alias)]]}))
+  ;; test select-from
 
-  (defn assert-isomorph [q]
-    (assert q (-> q honey->ast ast->honey)))
-
-  (let [q {:select [:id :item_id :item :kind :item_kind]
-           :from   [[:categories :c]]}]
-    (honey->ast q)
-    (assert-isomorph q))
-
-  (ast->honey ast)
-
-  )
+  (comment
+    (def ast *1)
 
 
-;; test select-from-join-left-join
-(let [q   {:select    [:bsa.id
+
+    (defn assert-isomorph [q]
+      (assert q (-> q honey->ast ast->honey)))
+
+    (let [q {:select [:id :item_id :item :kind :item_kind]
+             :from   [[:categories :c]]}]
+      (honey->ast q)
+      #_(assert-isomorph q))
+
+    (parse-select "select 1")
+    (ast->honey ast)
+
+    )
+
+
+  ;; test select-from-join-left-join
+  (let [q {:select    [:bsa.id
                        :bsa.created_at
                        :bsa.progress
                        :pcc.gl_crop_name
@@ -182,4 +192,4 @@ into_option: {
                        [:delivery_companies :dc] [:= :dc.id :bsosi.delivery_company_id]
                        [:bulk_sale_market_sales_info :bsmsi] [:= :bsmsi.bulk_sale_application_id :bsa.id]
                        [:farm_market_codes :fmc] [:= :fmc.id :bsmsi.farm_market_code_id]]}]
-  (try-parse-honey q))
+    (sql/format q)))

@@ -1,0 +1,11 @@
+{:deps
+ true
+
+ :dev-http
+ {8080 "public"}
+
+ :builds
+ {:app
+  {:target  :browser
+   :modules {:main {;:entries [yenoh.ui]
+                    :init-fn     yenoh.ui/init}}}}}

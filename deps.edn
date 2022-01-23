@@ -1,7 +1,12 @@
-{:deps    {instaparse/instaparse            {:mvn/version "1.4.0"}
+{:deps    {instaparse/instaparse            {:mvn/version "1.4.10"}
+           com.github.seancorfield/honeysql {:mvn/version "2.2.858"}}
 
-           com.github.seancorfield/honeysql {:mvn/version "2.2.858"}
-           meander/epsilon                  {:mvn/version "0.0.650"}
-           enlive/enlive                    {:mvn/version "1.1.6"}
-           }
- :aliases {:test {:extra-paths ["test"]}}}
+ :aliases {:dev         {:extra-deps {meander/epsilon {:mvn/version "0.0.650"}
+                                      enlive/enlive   {:mvn/version "1.1.6"}}}
+
+           :test        {:extra-paths ["test"]}
+
+           :ui          {:extra-deps {reagent/reagent {:mvn/version "1.1.0"}}}
+
+           :shadow-cljs {:extra-deps {thheller/shadow-cljs {:mvn/version "2.16.12"}}
+                         :main-opts  ["-m" "shadow.cljs.devtools.cli"]}}}

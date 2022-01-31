@@ -2,7 +2,8 @@
   (:require [reagent.core :as r]
             [reagent.dom :as rd]
             [yenoh :as yenoh]
-            [cljs.pprint :refer [pprint]]))
+            [cljs.pprint :refer [pprint]]
+            [cljs.reader :refer [read-string]]))
 
 (defonce text (r/atom "SELECT name, address FROM users AS U"))
 
@@ -29,7 +30,8 @@
         [:input {:type     "button"
                  :value    "Convert from HoneySQL"
                  :on-click (fn []
-                             (let [s (yenoh/honey->sql @honey)]
+                             (let [hs (read-string @honey)
+                                   s  (yenoh/honey->sql hs)]
                                (reset! text s)))}]
         " "
         [:input {:type     "button"

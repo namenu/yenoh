@@ -5,102 +5,85 @@
                :cljs [instaparse.core :as insta :refer-macros [defparser]])))
 
 
-"" "
-;; mysql 8.0 select spec
-
-SELECT
-    [ALL | DISTINCT | DISTINCTROW ]
-    [HIGH_PRIORITY]
-    [STRAIGHT_JOIN]
-    [SQL_SMALL_RESULT] [SQL_BIG_RESULT] [SQL_BUFFER_RESULT]
-    [SQL_NO_CACHE] [SQL_CALC_FOUND_ROWS]
-    select_expr [, select_expr] ...
-    [into_option]
-    [FROM table_references
-      [PARTITION partition_list]]
-    [WHERE where_condition]
-    [GROUP BY {col_name | expr | position}, ... [WITH ROLLUP]]
-    [HAVING where_condition]
-    [WINDOW window_name AS (window_spec)
-        [, window_name AS (window_spec)] ...]
-    [ORDER BY {col_name | expr | position}
-      [ASC | DESC], ... [WITH ROLLUP]]
-    [LIMIT {[offset,] row_count | row_count OFFSET offset}]
-    [into_option]
-    [FOR {UPDATE | SHARE}
-        [OF tbl_name [, tbl_name] ...]
-        [NOWAIT | SKIP LOCKED]
-      | LOCK IN SHARE MODE]
-    [into_option]
-
-into_option: {
-    INTO OUTFILE 'file_name'
-        [CHARACTER SET charset_name]
-        export_options
-  | INTO DUMPFILE 'file_name'
-  | INTO var_name [, var_name] ...
-}
-" ""
-
 ;;; https://ronsavage.github.io/SQL/sql-92.bnf.html#query%20specification
 (def parse-select
   (insta/parser
     "
-    select                := <'SELECT'> set_quantifier? select_list table_expr
+    query_spec            := <'SELECT'> set_quantifier? select_list table_expr
     set_quantifier        := 'ALL' | 'DISTINCT'
 
     select_list           := '*' | ( select_sublist (<comma> select_sublist)* )
-      <select_sublist>      := derived_column | qualifier '.' '*'
-      derived_column        := column_ref as_clause?
+    <select_sublist>      := derived_column | qualifier '.' '*'
+    derived_column        := column_ref as_clause?
 
-      <as_clause>           := 'AS'? column_name
+    <as_clause>           := 'AS'? column_name
 
-      column_ref            := (qualifier '.')? column_name
-      column_name           := identifier
+    column_ref            := (qualifier '.')? column_name
+    column_name           := identifier
 
 
-    table_expr            := from_clause
-      from_clause           := 'FROM' table_ref (comma table_ref)*
-      table_ref             := table_name correlation_spec? | joined_table
+    table_expr            := from_clause where_clause?
+    from_clause           := 'FROM' table_ref (comma table_ref)*
+    table_ref             := table_name correlation_spec? | joined_table
 
-      correlation_spec      := 'AS'? identifier
+    correlation_spec      := 'AS'? identifier
 
-      (* qualified join only *)
-      joined_table          := table_ref join_type? <'JOIN'> table_ref join_spec?
-      join_type           := 'INNER' | ('LEFT' | 'RIGHT' | 'FULL') 'OUTER'?
+    (* qualified join only *)
+    joined_table          := table_ref join_type? <'JOIN'> table_ref join_spec?
+    join_type             := 'INNER' | ('LEFT' | 'RIGHT' | 'FULL') 'OUTER'?
 
-      (* 'USING' is not supported' *)
-      join_spec             := <'ON'> boolean_term
+    (* 'USING' is not supported' *)
+    join_spec             := <'ON'> search_condition
 
-      table_name            := identifier
+    table_name            := identifier
 
-    <boolean_term>        := boolean_factor
-      <boolean_factor>        := 'NOT'? predicate
+    where_clause          := 'WHERE' search_condition
 
-      <predicate>           := comparison_pred
-      (*                     | between_pred
-                             | in_pred
-                             | like_pred
-                             | null_pred
-                             | exists_pred
-      *)
-      <comparison_pred>     := value_expr comp_op value_expr
-      <comp_op>             := '=' | '<>' | '<' | '>' | '<=' | '>='
+    (* search condition *)
+    <search_condition>    := boolean_term | search_condition 'OR' boolean_term
+    <boolean_term>        := boolean_factor | boolean_term 'AND' boolean_factor
+    <boolean_factor>      := 'NOT'? predicate
 
-    (* 개미지옥이다... *)
-    value_expr           := numeric_value_expr  | string_value_expr
+    <predicate>           := comparison_pred
+    (*                     | between_pred
+                           | in_pred
+                           | like_pred
+                           | null_pred
+                           | exists_pred
+    *)
+    <comparison_pred>     := value_expr comp_op value_expr
 
-      <numeric_value_expr>    := #\"\\d+\"
-      <string_value_expr>     := character_value_expr
+    value_expr            := numeric_value_expr | string_value_expr
 
-      <character_value_expr>  := value_expr_primary
+    <numeric_value_expr>  := numeric_primary
+    <numeric_primary>     := value_expr_primary
 
-      <value_expr_primary>    := column_ref
+    <value_expr_primary>  := unsigned_value_spec | column_ref
 
+    unsigned_value_spec   := unsigned_literal
+    <unsigned_literal>    := unsigned_numeric_literal | char_string_literal
+
+    unsigned_numeric_literal := unsigned_int ( '.' unsigned_int? )?
+
+    (* literals *)
+    <quote>               := \"'\"
+    <backtick>            := '`'
+
+    char_string_literal   := <quote> '1' <quote>
+    <char_representation> := #\"[^']\"
+
+    <unsigned_int>        := '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'
+
+    (* query expr components *)
+    <string_value_expr>   := char_value_expr
+    <char_value_expr>     := char_primary
+
+    <char_primary>        := value_expr_primary
 
     <qualifier>           := table_name
-    (* regular identifier *)
-    <identifier>          := #\"[a-zA-Z_]+\"
+    <identifier>          := #\"[_a-zA-Z][_a-zA-Z0-9]*\" | <backtick> #\"[_a-zA-Z][_a-zA-Z0-9]*\"<backtick>
+
+    <comp_op>             := '=' | '<>' | '<' | '>' | '<=' | '>='
 
     <comma>               := ','
     "
@@ -123,7 +106,7 @@ into_option: {
 
 (defmulti emit first)
 
-(defmethod emit :select [[_ select-list tables]]
+(defmethod emit :query_spec [[_ select-list tables]]
   (apply merge select-list tables))
 
 (defmethod emit :select_list [[_ & args]]
@@ -224,7 +207,6 @@ into_option: {
 
 
 (comment
-
   (let [q   {:select    [:bsa.id
                          [:fmc.code_name :offline_market_name]]
              :from      [[:bulk_sale_applications :bsa]]
@@ -240,40 +222,4 @@ into_option: {
                   e)
                 ) ast))
 
-  (let [q   {:select    [:bsa.id
-                         :bsa.created_at
-                         :bsa.progress
-                         :pcc.gl_crop_name
-                         :pcc.code_name_new
-                         :bsc.estimated_purchase_price_min
-                         :bsc.estimated_purchase_price_max
-                         :bsc.preferred_grade
-                         :bsc.preferred_quantity
-                         :bsc.estimated_seller_earning_rate
-                         :u.name
-                         :u.phone_num
-                         :u.region
-                         :ubri.number
-                         :ubri.type
-                         :ubsi.experience_year_type
-                         [:fmc.code_name :offline_market_name]
-                         :ubsi.lastyear_income
-                         [:bsosi.market :online_market_name]
-                         :bsosi.url
-                         [:dc.name :delivery_company_name]]
-             :from      [[:bulk_sale_applications :bsa]]
-             :join      [[:bulk_sale_campaigns :bsc] [:= :bsa.bulk_sale_campaign_id :bsc.id]
-                         [:product_category_code :pcc] [:= :bsc.product_category_code_id :pcc.id]
-                         [:user_business_support_info :ubsi] [:= :bsa.user_business_support_info_id :ubsi.id]
-                         [:user_business_registration_info :ubri] [:= :ubsi.user_id :ubri.user_id]
-                         [:users :u] [:= :ubsi.user_id :u.id]]
-             :left-join [[:bulk_sale_online_sales_info :bsosi] [:= :bsosi.bulk_sale_application_id :bsa.id]
-                         [:delivery_companies :dc] [:= :dc.id :bsosi.delivery_company_id]
-                         [:bulk_sale_market_sales_info :bsmsi] [:= :bsmsi.bulk_sale_application_id :bsa.id]
-                         [:farm_market_codes :fmc] [:= :fmc.id :bsmsi.farm_market_code_id]]}
-
-        ast (honey->ast q)]
-    #_(ast->honey ast)
-    ;ast
-
-    ))
+  )

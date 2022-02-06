@@ -158,8 +158,17 @@
       "RIGHT" :right-join
       "FULL" :full)))
 
-(defmethod emit :joined_table [[_ t1 join-type t2 spec]]
-  [join-type t1 t2 spec])
+(defmethod emit :joined_table [[_ & args]]
+  (case (count args)
+    ;; t1 JOIN t2 spec
+    3
+    (let [[t1 t2 spec] args]
+      [:join t1 t2 spec])
+
+    ;; t1 join-type JOIN t2 spec
+    4
+    (let [[t1 join-type t2 spec] args]
+      [join-type t1 t2 spec])))
 
 (defmethod emit :correlation_spec [[_ & args]]
   (case (count args)

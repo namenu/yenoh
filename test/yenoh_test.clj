@@ -6,43 +6,50 @@
   (fn [x]
     (is (= x (-> x f f-inv)))))
 
-(def test-parser (test-inverse honey->ast ast->honey))
+(def roundtrip (test-inverse honey->ast ast->honey))
+(def roundtrip-raw (comp (test-inverse ast->honey honey->ast) parse-select))
 
 (deftest select
   #_(testing "select"
       (let [q {:select [:id]}]
-        (test-parser q)
+        (roundtrip q)
         ))
 
   (testing "select unqualified"
-    (test-parser {:select [:id :item_id :item :kind :item_kind]
-                  :from   [[:categories :c]]}))
+    (roundtrip {:select [:id :item_id :item :kind :item_kind]
+                :from   [[:categories :c]]}))
 
   (testing "select qualified and alias"
-    (test-parser {:select [:bsa.id
-                           [:fmc.code_name :offline_market_name]]
-                  :from   [[:bulk_sale_applications :bsa]]}))
+    (roundtrip {:select [:bsa.id
+                         [:fmc.code_name :offline_market_name]]
+                :from   [[:bulk_sale_applications :bsa]]}))
 
   (testing "select qualified all"
-    (test-parser {:select [:*]
-                  :from   [:t]})
-    (test-parser {:select [:abs.*]
-                  :from   [[:atc_business_support :abs]]})))
+    (roundtrip {:select [:*]
+                :from   [:t]})
+    (roundtrip {:select [:abs.*]
+                :from   [[:atc_business_support :abs]]})))
 (deftest join
-  (testing "select from left-join"
+  (testing "implicit inner"
+    (let [sql "SELECT *
+FROM user AS U
+INNER JOIN user_role AS UR ON U.id = UR.uid"]
+      (roundtrip-raw sql)))
+
+  (testing "left-join"
     (let [q {:select    [:bsa.id
                          [:fmc.code_name :offline_market_name]]
              :from      [[:bulk_sale_applications :bsa]]
              :left-join [[:bulk_sale_market_sales_info :bsmsi] [:= :bsmsi.bulk_sale_application_id :bsa.id]
                          [:farm_market_codes :fmc] [:= :fmc.id :bsmsi.farm_market_code_id]]}]
-      (test-parser q)))
+      (roundtrip q)))
 
   (testing "on multiple terms"
-    (test-parser {:select [:abs.*]
-                  :from   [[:atc_business_support :abs]]
-                  :join   [[:atc_business_support_to_display :abstd] [:and
-                                                                      [:= :abstd.subsidy_id :abs.id]
-                                                                      [:= :abstd.is_deleted :undeleted]]]}))
+    (roundtrip {:select [:abs.*]
+                :from   [[:atc_business_support :abs]]
+                :join   [[:atc_business_support_to_display :abstd] [:and
+                                                                    [:= :abstd.subsidy_id :abs.id]
+                                                                    [:= :abstd.is_deleted :undeleted]]]}))
 
   (testing "select-from-join-left-join"
     (let [q {:select    [:bsa.id
@@ -76,7 +83,7 @@
                          [:delivery_companies :dc] [:= :dc.id :bsosi.delivery_company_id]
                          [:bulk_sale_market_sales_info :bsmsi] [:= :bsmsi.bulk_sale_application_id :bsa.id]
                          [:farm_market_codes :fmc] [:= :fmc.id :bsmsi.farm_market_code_id]]}]
-      (test-parser q))))
+      (roundtrip q))))
 
 (deftest table-joins
   (testing "one join"

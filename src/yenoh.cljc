@@ -13,7 +13,7 @@
     set_quantifier        := 'ALL' | 'DISTINCT'
 
     select_list           := '*' | ( select_sublist (<comma> select_sublist)* )
-    <select_sublist>      := derived_column | qualifier '.' '*'
+    select_sublist        := derived_column | qualifier '.' '*'
     derived_column        := column_ref as_clause?
 
     <as_clause>           := 'AS'? column_name
@@ -93,14 +93,12 @@
     :auto-whitespace :standard))
 
 
-(defn honey->ast [q]
-  (let [sql (first (sql/format q))]
-    (parse-select sql)))
-
 (defn honey->sql [honey]
-  (let [sql (sql/format honey {:pretty true})]
+  (let [sql (sql/format honey {:inline true :pretty true})]
     (-> sql first clojure.string/trim)))
 
+(defn honey->ast [q]
+  ((comp parse-select honey->sql) q))
 
 ;;; emit
 
@@ -110,7 +108,21 @@
   (apply merge select-list tables))
 
 (defmethod emit :select_list [[_ & args]]
-  {:select (vec args)})
+  {:select (if (= (first args) "*")
+             [:*]
+             (vec args))})
+
+(defmethod emit :select_sublist [[_ & args]]
+  (case (count args)
+    1
+    (first args)
+
+    ;; `tn.*` form
+    3
+    (let [[tn p1 p2] args]
+      (assert (= p1 "."))
+      (assert (= p2 "*"))
+      (keyword (str (name tn) ".*")))))
 
 (defmethod emit :derived_column [[_ & args]]
   (case (count args)

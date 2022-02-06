@@ -23,6 +23,12 @@
                            [:fmc.code_name :offline_market_name]]
                   :from   [[:bulk_sale_applications :bsa]]}))
 
+  (testing "select qualified all"
+    (test-parser {:select [:*]
+                  :from   [:t]})
+    (test-parser {:select [:abs.*]
+                  :from   [[:atc_business_support :abs]]}))
+
   (testing "select from left-join"
     (let [q {:select    [:bsa.id
                          [:fmc.code_name :offline_market_name]]

@@ -33,7 +33,7 @@
     join_type             := 'INNER' | ('LEFT' | 'RIGHT' | 'FULL') 'OUTER'?
 
     (* 'USING' is not supported' *)
-    join_spec             := <'ON'> search_condition
+    <join_spec>           := <'ON'> search_condition
 
     table_name            := identifier
 
@@ -41,8 +41,9 @@
 
     (* search condition *)
     <search_condition>    := boolean_term | search_condition 'OR' boolean_term
-    <boolean_term>        := boolean_factor | boolean_term 'AND' boolean_factor
-    <boolean_factor>      := 'NOT'? predicate
+    boolean_term          := boolean_factor | boolean_term 'AND' boolean_factor
+    <boolean_factor>      := 'NOT'? boolean_primary
+    boolean_primary       := predicate | '(' search_condition ')'
 
     <predicate>           := comparison_pred
     (*                     | between_pred
@@ -51,7 +52,7 @@
                            | null_pred
                            | exists_pred
     *)
-    <comparison_pred>     := value_expr comp_op value_expr
+    comparison_pred       := value_expr comp_op value_expr
 
     value_expr            := numeric_value_expr | string_value_expr
 
@@ -149,16 +150,16 @@
     (let [[tn _ cn] args]
       (keyword (str (name tn) "." (name cn))))))
 
-(defmethod emit :join_spec [[_ & args]]
-  (let [[[_ lhs] op [_ rhs]] args]
-    [(case op
-       "=" :=) lhs rhs]))
+(defmethod emit :join_type [[_ & args]]
+  (let [join_type (first args)]
+    (case join_type
+      "INNER" :join
+      "LEFT" :left-join
+      "RIGHT" :right-join
+      "FULL" :full)))
 
-(defmethod emit :joined_table [[_ t1 type t2 spec]]
-  (let [join-type (case (second type)
-                    "INNER" :join
-                    "LEFT" :left-join)]
-    [join-type t1 t2 spec]))
+(defmethod emit :joined_table [[_ t1 join-type t2 spec]]
+  [join-type t1 t2 spec])
 
 (defmethod emit :correlation_spec [[_ & args]]
   (case (count args)
@@ -192,8 +193,7 @@
       ;; flatten
       4
       (let [[join-type t1 t2 join-spec] node]
-        (update (flatten-joins t1) join-type (fnil conj []) t2 join-spec)))
-    ))
+        (update (flatten-joins t1) join-type (fnil conj []) t2 join-spec)))))
 
 (defmethod emit :from_clause [[_ _from tables]]
   (flatten-joins tables))
@@ -201,12 +201,40 @@
 (defmethod emit :table_expr [[_ & args]]
   args)
 
+(defmethod emit :boolean_term [[_ & args]]
+  (case (count args)
+    1
+    (first args)
+
+    ;; term 'AND' factor
+    3
+    (let [[term AND factor] args]
+      (assert (= AND "AND"))
+      [:and term factor])))
+
+(defmethod emit :boolean_primary [[_ & args]]
+  (case (count args)
+    1
+    (first args)
+
+    3
+    (let [[p0 p1 p2] args]
+      (if (and (= p0 "(") (= p2 ")"))
+        p1
+        args))))
+
+(defmethod emit :comparison_pred [[_ & args]]
+  (let [[[lhs] op [rhs]] args]
+    [(case op
+       "=" :=) lhs rhs]))
+
+;; emit literally
 (defmethod emit :default [node]
   (let [[tag & args] node]
-    ;(println "skipping " tag)
-    (if (#{} tag)
-      args
-      node)))
+    (assert (#{:value_expr :unsigned_numeric_literal :unsigned_value_spec} tag)
+            (str "no method for tag: " node))
+    args
+    ))
 
 
 (defn ast->honey [ast]

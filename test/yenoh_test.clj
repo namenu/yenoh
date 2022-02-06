@@ -27,8 +27,8 @@
     (test-parser {:select [:*]
                   :from   [:t]})
     (test-parser {:select [:abs.*]
-                  :from   [[:atc_business_support :abs]]}))
-
+                  :from   [[:atc_business_support :abs]]})))
+(deftest join
   (testing "select from left-join"
     (let [q {:select    [:bsa.id
                          [:fmc.code_name :offline_market_name]]
@@ -36,6 +36,13 @@
              :left-join [[:bulk_sale_market_sales_info :bsmsi] [:= :bsmsi.bulk_sale_application_id :bsa.id]
                          [:farm_market_codes :fmc] [:= :fmc.id :bsmsi.farm_market_code_id]]}]
       (test-parser q)))
+
+  (testing "on multiple terms"
+    (test-parser {:select [:abs.*]
+                  :from   [[:atc_business_support :abs]]
+                  :join   [[:atc_business_support_to_display :abstd] [:and
+                                                                      [:= :abstd.subsidy_id :abs.id]
+                                                                      [:= :abstd.is_deleted :undeleted]]]}))
 
   (testing "select-from-join-left-join"
     (let [q {:select    [:bsa.id
